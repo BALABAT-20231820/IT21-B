@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Requirement</title>
+</head>
+<body>
+    
+    <script>
+        // Abstract Base Class for Maps (Abstraction)
+class BaseMap {
+  constructor(containerId, center, zoom) {
+    this._containerId = containerId; // Encapsulation: Private-like property
+    this._center = center;
+    this._zoom = zoom;
+    this._map = null; // The map instance is encapsulated
+    this._markers = [];
+    this._lastSelectedMarker = null;
+  }
+
+  // Abstract method to initialize the map (To be implemented by subclasses)
+  initMap() {
+    throw new Error('initMap() must be implemented in subclasses');
+  }
+
+  // Method to add a marker to the map
+  addMarker(lat, lng, options = {}) {
+    const marker = L.marker([lat, lng], options).addTo(this._map);
+    this._markers.push(marker);
+    return marker;
+  }
+
+  // Open a marker popup and center the map
+  openPopup(lat, lng, color = 'red') {
+    const marker = this._markers.find(
+      (m) => m.getLatLng().lat === lat && m.getLatLng().lng === lng
+    );
+    if (marker) {
+      this._map.panTo([lat, lng]);
+      this.resetMarkerColor();
+      this.changeMarkerColor(marker, color);
+      marker.openPopup();
+      this._lastSelectedMarker = marker;
+    }
+  }
+
+  // Reset marker color
+  resetMarkerColor() {
+    if (this._lastSelectedMarker) {
+      this._lastSelectedMarker._icon.style.backgroundColor = 'white';
+    }
+  }
+
+  // Change marker color (Polymorphism: Behavior depends on the color argument)
+  changeMarkerColor(marker, color) {
+    if (marker && marker._icon) {
+      marker._icon.style.backgroundColor = color;
+    }
+  }
+}
+
+// Subclass for LeafletMap (Inheritance)
+class LeafletMap extends BaseMap {
+  constructor(containerId, center, zoom) {
+    super(containerId, center, zoom); // Call BaseMap constructor
+    this.initMap();
+    this._initTileLayer();
+  }
+
+  // Implement abstract method to initialize Leaflet map
+  initMap() {
+    this._map = L.map(this._containerId, {
+      center: this._center,
+      zoom: this._zoom,
+      dragging: true,
+      zoomControl: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      touchZoom: false,
+      tap: false
+    });
+  }
+
+  // Initialize the tile layer for the map
+  _initTileLayer() {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(this._map);
+  }
+
+  // Load markers from a JSON file
+  loadMarkersFromJson(url) {
+    fetch(url)
+      .then((response) => response.json())
+      .then((data) => {
+        data.garbageData.forEach((item) => {
+          const marker = this.addMarker(item.location.lat, item.location.lng);
+          marker.bindPopup(`
+            <img src="${item.image}" alt="${item.name}" style="width: 100px;" />
+            <p>${item.name}</p>
+          `);
+
+          marker.on('dblclick', () => {
+            window.location.href = item.htmlLink;
+          });
+        });
+      })
+      .catch((error) => console.error('Error loading markers:', error));
+  }
+}
+
+// Class for LocationCard
+class LocationCard {
+  constructor(name, lat, lng, categories, imageUrl) {
+    this._name = name; // Encapsulation: Private-like property
+    this._lat = lat;
+    this._lng = lng;
+    this._categories = categories;
+    this._imageUrl = imageUrl;
+  }
+
+  // Create and return a card element
+  createCard() {
+    const cardDiv = document.createElement('div');
+    cardDiv.className = 'card location-card';
+    cardDiv.innerHTML = `
+      <div class="card-body">
+        <h5>${this._name}</h5>
+        <img src="${this._imageUrl}" alt="${this._name}" style="width: 100px;" />
+        <p>Categories: ${this._categories.join(', ')}</p>
+      </div>
+    `;
+    return cardDiv;
+  }
+}
+
+// Class for Rendering Locations
+class LocationRenderer {
+  constructor(containerId, searchInputId) {
+    this._container = document.getElementById(containerId); // Encapsulation
+    this._searchInput = document.getElementById(searchInputId);
+    this._locations = [];
+    this._filteredLocations = [];
+
+    this._searchInput.addEventListener('input', () => this._filterLocations());
+  }
+
+  // Fetch location data and render cards
+  fetchLocationData(url) {
+    fetch(url)
+      .then((response) => response.json())
+      .then((data) => {
+        this._locations = data.garbageData;
+        this._filteredLocations = [...this._locations];
+        this._renderLocations(this._filteredLocations);
+      })
+      .catch((error) => console.error('Error loading location data:', error));
+  }
+
+  // Render location cards
+  _renderLocations(data) {
+    this._container.innerHTML = '';
+    data.forEach((location) => {
+      const card = new LocationCard(
+        location.name,
+        location.location.lat,
+        location.location.lng,
+        location.categories,
+        location.image
+      );
+      this._container.appendChild(card.createCard());
+    });
+  }
+
+  // Filter locations based on search input
+  _filterLocations() {
+    const query = this._searchInput.value.toLowerCase();
+    this._filteredLocations = this._locations.filter((location) =>
+      location.name.toLowerCase().includes(query)
+    );
+    this._renderLocations(this._filteredLocations);
+  }
+}
+
+// Application Initialization
+const myMap = new LeafletMap('map', [8.360004, 124.868419], 18);
+const locationRenderer = new LocationRenderer('location-container', 'searchLocation');
+
+myMap.loadMarkersFromJson('app.json');
+locationRenderer.fetchLocationData('app.json');
+
+    </script>
+</body>
+</html>
